@@ -243,7 +243,7 @@ class Frames:
                   progress=progress).get_table(do_intensities=do_intensities,
                                                do_shaft_outline=do_shaft_outline))
             for confocal in progress(confocals, desc='Segmenting')]
-        self.frame_times = [time for time, _ in self.stacks]
+        self.frame_times = [time for time, _ in self.stack_tables]
         
         self._link_frames()
         
