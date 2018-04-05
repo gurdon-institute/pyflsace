@@ -268,10 +268,10 @@ class Frames:
             return rel_flss, eC
         
         # Initial FLS collection is everything in the first frame
-        flss = [FLS(0, row) for i, row in self.stack_tables[0].iterrows()]
+        flss = [FLS(0, row) for i, row in self.stack_tables[0][1].iterrows()]
         # Iterate over tables from time points, starting at the second one
         for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink'):
-            tab = self.stack_tables[i][0]
+            tab = self.stack_tables[i][1]
             # Calculate cost matrix
             rel_flss, C = cost_matrix(flss, tab, i)
             # Find best assignments
