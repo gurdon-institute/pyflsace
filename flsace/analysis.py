@@ -228,7 +228,7 @@ class Frames:
                  progress=None):
         self.progress = progress
         
-        self.stacks = [
+        self.stack_tables = [
             (confocal.acquisition_time,
              Stack(confocal,
                   base_slice,
@@ -238,10 +238,8 @@ class Frames:
                   K=K,
                   thresholding=thresholding,
                   link_cutoff_distance=link_cutoff_distance,
-                  progress=progress))
+                  progress=progress).get_table())
             for confocal in progress(confocals, desc='Segmenting')]
-        self.stack_tables = [stack.get_table(do_intensities=False, do_shaft_outline=False)
-                             for _, stack in progress(self.stacks, desc='Tables')]
         self.frame_times = [time for time, _ in self.stacks]
         
         self._link_frames()
@@ -270,7 +268,7 @@ class Frames:
         flss = [FLS(0, row) for i, row in self.stack_tables[0].iterrows()]
         # Iterate over tables from time points, starting at the second one
         for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink'):
-            tab = self.stack_tables[i]
+            tab = self.stack_tables[i][0]
             # Calculate cost matrix
             rel_flss, C = cost_matrix(flss, tab, i)
             # Find best assignments
@@ -285,6 +283,20 @@ class Frames:
                 else:
                     rel_flss[c].add_row(i, tab.iloc[r])
         self.flss = flss
+        
+    def get_table(self):
+        rows = []
+        fls_id = 0
+        for f in self.flss:
+            for i, frame in enumerate(f.frames):
+                rows.append((fls_id, frame, self.frame_times[frame],
+                             f.path_length[i],
+                             f.base_area[i],
+                             f.base_position[i][0],
+                             f.base_position[i][1]))
+        return pd.DataFrame(data=rows,
+                            columns=["fls_index", "frame", "time",
+                                     "path_length", "base_area", "X", "Y"])
             
 if __name__ == '__main__':
     import NDParser
