@@ -225,6 +225,8 @@ class Frames:
                  K=3,
                  thresholding=threshold_triangle,
                  link_cutoff_distance=2.,
+                 do_intensities=False,
+                 do_shaft_outline=False,
                  progress=None):
         self.progress = progress
         
@@ -238,7 +240,8 @@ class Frames:
                   K=K,
                   thresholding=thresholding,
                   link_cutoff_distance=link_cutoff_distance,
-                  progress=progress).get_table())
+                  progress=progress).get_table(do_intensities=do_intensities,
+                                               do_shaft_outline=do_shaft_outline))
             for confocal in progress(confocals, desc='Segmenting')]
         self.frame_times = [time for time, _ in self.stacks]
         
