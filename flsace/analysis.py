@@ -26,7 +26,7 @@ class Stack(object):
                  K=3,
                  thresholding=threshold_triangle,
                  link_cutoff_distance=2.,
-                 progress=None, debug_link=False):
+                 progress=None, progress_offset=None):
         self._confocal = confocal[base_slice:]
         self._tirfs = tirfs
         self._sigma = sigma
@@ -42,15 +42,15 @@ class Stack(object):
             self._progress = lambda x, *args, **kw: x
         else:
             self._progress = progress
+        self._progress_offset = progress_offset
 
         self._generate_rois()
-        if not debug_link:
-            self._link_slices()
 
     def _generate_rois(self):
         slice_rois = []
         masks = []
-        for i in self._progress(range(self._confocal.shape[0]), desc="Generating ROIs"):
+        for i in self._progress(range(self._confocal.shape[0]), desc="Generating ROIs",
+                                position=self._progress_offset):
             dog = (gaussian(self._confocal[i], sigma=self._sigma) -
                    gaussian(self._confocal[i], sigma=self._K*self._sigma))
             thresh = self._thresholding(dog)
@@ -70,7 +70,8 @@ class Stack(object):
         vw = self._voxel_width
         vd = self._voxel_depth
         fls = [[r] for r in self._slice_rois[0]]
-        for i in self._progress(range(1, len(self._slice_rois)), desc="Linking slices"):
+        for i in self._progress(range(1, len(self._slice_rois)), desc="Linking slices",
+                                position=self._progress_offset):
             next_rois = self._slice_rois[i]
             valid_fls = fls #[f for f in fls if len(f) >= i-self._link_]
             if len(valid_fls) == 0 or len(next_rois) == 0:
@@ -200,7 +201,8 @@ class Stack(object):
     
     def get_table(self, *a, **kw):
         return pd.DataFrame([self._fls_to_dict(f, *a, **kw)
-                             for f in self._progress(self._fls, desc='Table Output')])
+                             for f in self._progress(self._fls, desc='Table Output',
+                                                     position=self._progress_offset)])
 
 class FLS:
     def __init__(self, frame, row):
@@ -227,7 +229,7 @@ class Frames:
                  link_cutoff_distance=2.,
                  do_intensities=False,
                  do_shaft_outline=False,
-                 progress=None):
+                 progress=None, progress_offset=None):
         self.progress = progress
         
         self.stack_tables = [
@@ -240,9 +242,10 @@ class Frames:
                   K=K,
                   thresholding=thresholding,
                   link_cutoff_distance=link_cutoff_distance,
-                  progress=progress).get_table(do_intensities=do_intensities,
+                  progress=progress,
+                  progress_offset=progress_offset+1 if progress_offset is not None else None).get_table(do_intensities=do_intensities,
                                                do_shaft_outline=do_shaft_outline))
-            for confocal in progress(confocals, desc='Segmenting')]
+            for confocal in progress(confocals, desc='Segmenting', position=progress_offset)]
         self.frame_times = [time for time, _ in self.stack_tables]
         
         self._link_frames()
