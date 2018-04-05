@@ -45,6 +45,8 @@ class Stack(object):
         self._progress_offset = progress_offset
 
         self._generate_rois()
+        
+        self._link_slices()
 
     def _generate_rois(self):
         slice_rois = []
