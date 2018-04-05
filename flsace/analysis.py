@@ -304,6 +304,7 @@ class Frames:
                              f.base_area[i],
                              f.base_position[i][0],
                              f.base_position[i][1]))
+            fls_id += 1
         return pd.DataFrame(data=rows,
                             columns=["fls_index", "frame", "time",
                                      "path_length", "base_area", "X", "Y"])
