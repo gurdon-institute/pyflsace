@@ -1,7 +1,0 @@
-pyflsace
-numpy
-pandas
-scikit-image
-scipy
-scikit-learn
-lapjv

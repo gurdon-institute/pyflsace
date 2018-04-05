@@ -7,4 +7,12 @@ setup(name='pyflsace',
       author='Ulrich Dobramysl',
       author_email='ulrich.dobramysl@gmail.com',
       packages=['flsace'],
-      zip_safe=False)
+      zip_safe=False,
+      install_requires=[
+          'numpy',
+          'scipy',
+          'pandas',
+          'scikit-image',
+          'scikit-learn',
+          'lapjv',
+      ])
