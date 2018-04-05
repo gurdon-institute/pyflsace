@@ -233,6 +233,7 @@ class Frames:
                  do_shaft_outline=False,
                  progress=None, progress_offset=None):
         self.progress = progress
+        self.progress_offset = progress_offset
         
         self.stack_tables = [
             (confocal.acquisition_time,
@@ -275,7 +276,8 @@ class Frames:
         # Initial FLS collection is everything in the first frame
         flss = [FLS(0, row) for i, row in self.stack_tables[0][1].iterrows()]
         # Iterate over tables from time points, starting at the second one
-        for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink'):
+        for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink',
+                               position=self.progress_offset):
             tab = self.stack_tables[i][1]
             # Calculate cost matrix
             rel_flss, C = cost_matrix(flss, tab, i)
