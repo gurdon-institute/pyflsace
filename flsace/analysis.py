@@ -17,6 +17,18 @@ from scipy.spatial.qhull import QhullError
 
 import lapjv
 
+class StackArray(np.ndarray):
+    """Array with metadata."""
+
+    def __new__(cls, array, dtype=None, order=None, acquisition_time=None):
+        obj = np.asarray(array, dtype=dtype, order=order).view(cls)                                 
+        obj.acquisition_time = acquisition_time
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.acquisition_time = getattr(obj, 'acqisition_time', None)
+
 class Stack(object):
     def __init__(self, confocal, base_slice,
                  tirfs={},

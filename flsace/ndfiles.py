@@ -1,5 +1,6 @@
 import tifffile
 import os
+from analysis import StackArray
 
 def _strip_quotes(s):
     s = s.strip()
@@ -124,6 +125,26 @@ class NDFile(object):
             data = tif.asarray()
         return data
     
+class ImageSet(abc.Sequence):
+    def __init__self, ndfilename, confocal_wavelength=1):
+        self._ndfile = NDFile(ndfilename)
+        self._confocal_wavelength = confocal_wavelength
+        self.nr_timepoints = self._ndfile.number_of_time_points
+
+    def __getitem__(self, timepoint):
+        with tifffile.TiffFile(
+                self._ndfile.get_image_filename(
+                    self._confocal_wavelength,
+                    self._stage_position,
+                    timepoint), 'r') as tif:
+            time = datetime.datetime.strptime(
+                tif.metaseries_metadata['PlaneInfo']['acquisition-time-local'],
+                '%Y%m%d %H:%M:%S.%f')
+            confocal = StackArray(tif.asarray(), acquisition_time=time)
+
+    def __len__(self):
+        return self.nr_timepoints
+
 if __name__ == "__main__":
     import sys
     from pprint import pprint
