@@ -1,6 +1,6 @@
 import tifffile
 import os
-from analysis import StackArray
+from .analysis import StackArray
 
 def _strip_quotes(s):
     s = s.strip()

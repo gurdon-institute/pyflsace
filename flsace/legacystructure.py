@@ -4,7 +4,7 @@ import datetime
 import os
 from collections import abc
 import numpy as np
-from analysis import StackArray
+from .analysis import StackArray
 
 class FLSImageDirSet(abc.Sequence):
     def __init__(self, directory):
