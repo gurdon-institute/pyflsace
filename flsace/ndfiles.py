@@ -140,7 +140,7 @@ class ImageSet(abc.Sequence):
                 self._ndfile.get_image_filename(
                     self._confocal_wavelength,
                     self._stage_position,
-                    timepoint), 'r') as tif:
+                    timepoint+1), 'r') as tif:
             time = datetime.datetime.strptime(
                 tif.metaseries_metadata['PlaneInfo']['acquisition-time-local'],
                 '%Y%m%d %H:%M:%S.%f')
