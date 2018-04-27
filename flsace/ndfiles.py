@@ -146,6 +146,7 @@ class ImageSet(abc.Sequence):
                 tif.metaseries_metadata['PlaneInfo']['acquisition-time-local'],
                 '%Y%m%d %H:%M:%S.%f')
             confocal = StackArray(tif.asarray(), acquisition_time=time)
+        return confocal
 
     def __len__(self):
         return self.nr_timepoints
