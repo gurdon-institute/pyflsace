@@ -271,8 +271,8 @@ class Frames:
             rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-4]
 
             # Position arrays for existing and candidate FLS
-            flss_pos = np.array([np.mean(fls.base_position, axis=0) for fls in rel_flss])
-            cand_pos = np.array([row.shaft_coordinates[0] for _, row in cands.iterrows()])
+            flss_pos = np.atleast_2d([np.mean(fls.base_position, axis=0) for fls in rel_flss])
+            cand_pos = np.atleast_2d([row.shaft_coordinates[0] for _, row in cands.iterrows()])
 
             # Calculate pairwise distances as cost
             fp0, cp0 = np.meshgrid(flss_pos[:, 0], cand_pos[:, 0])
