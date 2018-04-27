@@ -126,7 +126,7 @@ class NDFile(object):
         return data
     
 class ImageSet(abc.Sequence):
-    def __init__self, ndfilename, confocal_wavelength=1):
+    def __init__(self, ndfilename, confocal_wavelength=1):
         self._ndfile = NDFile(ndfilename)
         self._confocal_wavelength = confocal_wavelength
         self.nr_timepoints = self._ndfile.number_of_time_points
