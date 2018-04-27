@@ -137,7 +137,7 @@ class ImageSet(abc.Sequence):
         self.nr_timepoints = self._ndfile.number_of_time_points
 
     def __getitem__(self, timepoint):
-        if timepoint < 0 or timepoint >= self._ndfile.number_of_timepoints:
+        if timepoint < 0 or timepoint >= self._ndfile.number_of_time_points:
             raise IndexError
         with tifffile.TiffFile(
                 self._ndfile.get_image_filename(
