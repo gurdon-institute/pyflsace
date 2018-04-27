@@ -2,6 +2,7 @@ import tifffile
 import os
 from .analysis import StackArray
 from collections import abc
+import datetime
 
 def _strip_quotes(s):
     s = s.strip()
