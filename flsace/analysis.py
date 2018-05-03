@@ -315,11 +315,13 @@ class Frames:
                              f.path_length[i],
                              f.base_area[i],
                              f.base_position[i][0],
-                             f.base_position[i][1]))
+                             f.base_position[i][1]),
+                             f.shaft_coordinates)
             fls_id += 1
         return pd.DataFrame(data=rows,
                             columns=["fls_index", "frame", "time",
-                                     "path_length", "base_area", "X", "Y"])
+                                     "path_length", "base_area", "X", "Y",
+                                     "shaft_coordinates"])
             
 if __name__ == '__main__':
     import NDParser
