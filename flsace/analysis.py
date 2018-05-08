@@ -224,6 +224,7 @@ class FLS:
         self.path_length = []
         self.base_area = []
         self.base_position = []
+        self.shaft_coordinates = []
         
         self.add_row(frame, row)
     
@@ -232,6 +233,7 @@ class FLS:
         self.path_length.append(row.path_length)
         self.base_area.append(row.base_area)
         self.base_position.append(np.array(row.shaft_coordinates[0]))
+        self.shaft_coordinates.append(np.array(row.shaft_coordinates))
 
 class Frames:
     def __init__(self, confocals, base_slice,
@@ -315,8 +317,8 @@ class Frames:
                              f.path_length[i],
                              f.base_area[i],
                              f.base_position[i][0],
-                             f.base_position[i][1]),
-                             f.shaft_coordinates)
+                             f.base_position[i][1],
+                             f.shaft_coordinates[i]))
             fls_id += 1
         return pd.DataFrame(data=rows,
                             columns=["fls_index", "frame", "time",
