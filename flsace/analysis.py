@@ -63,17 +63,17 @@ class Stack(object):
     def _generate_rois(self):
         slice_rois = []
         masks = []
+        dog = (gaussian(self._confocal, sigma=(0, self._sigma, self._sigma)) -
+               gaussian(self._confocal, sigma=(0, self._K*self._sigma, self._K*self._sigma)))
+        thresh = self._thresholding(dog)
+        binary = dog > thresh
         for i in self._progress(range(self._confocal.shape[0]), desc="Generating ROIs",
                                 position=self._progress_offset):
-            dog = (gaussian(self._confocal[i], sigma=self._sigma) -
-                   gaussian(self._confocal[i], sigma=self._K*self._sigma))
-            thresh = self._thresholding(dog)
-            binary = dog > thresh
-            distance = gaussian(ndi.distance_transform_edt(binary), sigma=self._sigma)
-            local_max = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)), labels=binary)
+            distance = gaussian(ndi.distance_transform_edt(binary[i]), sigma=self._sigma)
+            local_max = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)), labels=binary[i])
             #local_max = local_maxima(distance, selem=np.ones((9, 9)))
             markers = ndi.label(local_max)[0]
-            labels = watershed(-distance, markers, mask=binary)
+            labels = watershed(-distance, markers, mask=binary[i])
             labels *= binary_opening(labels > 0)
             masks.append(labels > 0)
             slice_rois.append(regionprops(labels))
