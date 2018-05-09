@@ -271,11 +271,12 @@ class Frames:
         def cost_matrix(flss, cands, frame, cost_thresh=1e3):
             # Relevant FLS are from the last 4 frames
             rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-4]
-
+            if len(rel_flss) == 0:
+                return [], cost_thresh+np.random.rand(cands.shape[0], cands.shape[0])*cost_thresh
+            
             # Position arrays for existing and candidate FLS
-            flss_pos = np.atleast_2d([np.mean(fls.base_position, axis=0) for fls in rel_flss])
-            cand_pos = np.atleast_2d([row.shaft_coordinates[0] for _, row in cands.iterrows()])
-
+            flss_pos = np.array([np.mean(fls.base_position, axis=0) for fls in rel_flss])
+            cand_pos = np.array([row.shaft_coordinates[0] for _, row in cands.iterrows()])
             # Calculate pairwise distances as cost
             fp0, cp0 = np.meshgrid(flss_pos[:, 0], cand_pos[:, 0])
             fp1, cp1 = np.meshgrid(flss_pos[:, 1], cand_pos[:, 1])
@@ -293,12 +294,14 @@ class Frames:
         for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink',
                                position=self.progress_offset):
             tab = self.stack_tables[i][1]
+            nr_cand = tab.shape[0]
+            if nr_cand == 0:
+                continue
             # Calculate cost matrix
             rel_flss, C = cost_matrix(flss, tab, i)
             # Find best assignments
             col_ind, row_ind, _ = lapjv.lapjv(C)
             nr_fls = len(rel_flss)
-            nr_cand = tab.shape[0]
             for r in range(nr_cand):
                 c = col_ind[r]
                 cost = C[r, c]
