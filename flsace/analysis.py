@@ -97,28 +97,31 @@ class Stack(object):
         conv = np.array([vw, vw, vd])
         intens = gaussian(self._confocal, self._sigma)
         maxv = 512*intens.max()
-        fls = [[(0, r)] for r in self._slice_rois[0]]
-        pool = [(z, r) for z in range(1, len(self._slice_rois)) for r in self._slice_rois[z]]
+        fls = [[(0, r, np.array(list(r.centroid) + [0]))]
+               for r in self._slice_rois[0]]
+        pool = [(z, r, np.array(list(r.centroid) + [z]))
+                for z in range(1, len(self._slice_rois))
+                for r in self._slice_rois[z]]
         matched = True
         p = self._progress(desc="Linking slices", position=self._progress_offset)
         while matched:
-            X = np.array([list(rl[-1][1].centroid) + [rl[-1][0]]
-                          for rl in fls])
-            Y = np.array([list(r.centroid) + [z]
-                          for z, r in pool])
+            X = np.array([f[-1][2] for f in fls])
+            Y = np.array([p[2] for p in pool])
             P = pairwise_distances(X*conv, Y*conv)
             C = maxv*np.ones((X.shape[0], Y.shape[0]))
-            for i in range(X.shape[0]):
-                for j in range(Y.shape[0]):
-                    if P[i, j] < cutoff:
-                        x, y, z = _pxlline(X[i], Y[j])
-                        C[i, j] = intens[z, x, y].mean()/P[i, j]
+            ci, cj = np.where(P < cutoff)
+            for i, j in zip(ci, cj):
+                x, y, z = _pxlline(X[i], Y[j])
+                C[i, j] = intens[z, x, y].mean()/P[i, j]
             xm, ym = np.unravel_index(np.argsort(-C, axis=None), C.shape)
+            candidates = P[xm, ym] < cutoff
+            xm = xm[candidates]
+            ym = ym[candidates]
             looked_at_x = []
             looked_at_y = []
             matched = False
             for xi, yi in zip(xm, ym):
-                if P[xi, yi] < cutoff and xi not in looked_at_x and yi not in looked_at_y:
+                if xi not in looked_at_x and yi not in looked_at_y:
                     matched = True
                     looked_at_x.append(xi)
                     looked_at_y.append(yi)
@@ -126,7 +129,7 @@ class Stack(object):
             pool = [pool[yi] for yi in range(len(pool)) if yi not in looked_at_y]
             p.update(1)
         p.close()
-        self._fls = fls
+        self._fls = [[(e[0], e[1]) for e in f] for f in fls]
 
     def _link_slices(self):
         vw = self._voxel_width
