@@ -29,6 +29,13 @@ class StackArray(np.ndarray):
         if obj is None: return
         self.acquisition_time = getattr(obj, 'acqisition_time', None)
 
+def _pxlline(x, y):
+    x = np.asarray(x)
+    y = np.asarray(y)
+    delta = y - x
+    t = np.linspace(0, 1, np.ceil(np.linalg.norm(x-y))+1)
+    return np.unique((x + t[:, np.newaxis]*delta).astype(int), axis=0).T
+
 class Stack(object):
     def __init__(self, confocal, base_slice,
                  tirfs={},
@@ -38,6 +45,7 @@ class Stack(object):
                  K=3,
                  thresholding=threshold_triangle,
                  link_cutoff_distance=2.,
+                 alternative_linking=False,
                  progress=None, progress_offset=None):
         self._confocal = confocal[base_slice:]
         self._tirfs = tirfs
@@ -57,8 +65,11 @@ class Stack(object):
         self._progress_offset = progress_offset
 
         self._generate_rois()
-        
-        self._link_slices()
+
+        if alternative_linking:
+            self._alt_link_slices()
+        else:
+            self._link_slices()
 
     def _generate_rois(self):
         slice_rois = []
@@ -80,6 +91,43 @@ class Stack(object):
         self._roi_masks = masks
         self._slice_rois = slice_rois
         
+    def _alt_link_slices(self, cutoff=1.5):
+        vw = self._voxel_width
+        vd = self._voxel_depth
+        conv = np.array([vw, vw, vd])
+        intens = gaussian(self._confocal, self._sigma)
+        maxv = 512*intens.max()
+        fls = [[(0, r)] for r in self._slice_rois[0]]
+        pool = [(z, r) for z in range(1, len(self._slice_rois)) for r in self._slice_rois[z]]
+        matched = True
+        p = self._progress(desc="Linking slices", position=self._progress_offset)
+        while matched:
+            X = np.array([list(rl[-1][1].centroid) + [rl[-1][0]]
+                          for rl in fls])
+            Y = np.array([list(r.centroid) + [z]
+                          for z, r in pool])
+            P = pairwise_distances(X*conv, Y*conv)
+            C = maxv*np.ones((X.shape[0], Y.shape[0]))
+            for i in range(X.shape[0]):
+                for j in range(Y.shape[0]):
+                    if P[i, j] < cutoff:
+                        x, y, z = _pxlline(X[i], Y[j])
+                        C[i, j] = intens[z, x, y].mean()/P[i, j]
+            xm, ym = np.unravel_index(np.argsort(-C, axis=None), C.shape)
+            looked_at_x = []
+            looked_at_y = []
+            matched = False
+            for xi, yi in zip(xm, ym):
+                if P[xi, yi] < cutoff and xi not in looked_at_x and yi not in looked_at_y:
+                    matched = True
+                    looked_at_x.append(xi)
+                    looked_at_y.append(yi)
+                    fls[xi].append(pool[yi])
+            pool = [pool[yi] for yi in range(len(pool)) if yi not in looked_at_y]
+            p.update(1)
+        p.close()
+        self._fls = fls
+
     def _link_slices(self):
         vw = self._voxel_width
         vd = self._voxel_depth
@@ -105,7 +153,7 @@ class Stack(object):
 #             for xi, yi in zip(Xidx, Yidx):
 #                 if C[xi, yi] < self._link_cutoff_distance:
 #                     valid_fls[xi].append(next_rois[yi])
-        self._fls = fls
+        self._fls = [[(z, r) for z, r in enumerate(f)] for f in fls]
         
     @property
     def path_lengths(self):
@@ -113,14 +161,15 @@ class Stack(object):
                                         for i, r in enumerate(f)], axis=0), axis=1).sum()
                 for f in self._fls]
     
-    def _fls_to_dict(self, rs, do_shaft_outline=True, do_intensities=True):
+    def _fls_to_dict(self, zrs, do_shaft_outline=True, do_intensities=True):
+        zs, rs = zip(*zrs)
         vw = self._voxel_width
         vd = self._voxel_depth
         straight = ((((np.array(rs[-1].centroid)-np.array(rs[0].centroid))*vw)**2).sum() +
-                    ((len(rs)-1)*vd)**2)**0.5
+                    ((zs[-1]-zs[0])*vd)**2)**0.5
         path = np.linalg.norm(np.diff(
-            [[r.centroid[0]*vw, r.centroid[1]*vw, i*vd]
-             for i, r in enumerate(rs)],
+            [[r.centroid[0]*vw, r.centroid[1]*vw, z*vd]
+             for z, r in zrs],
             axis=0), axis=1).sum()
                 
         fls_properties = {
@@ -134,13 +183,13 @@ class Stack(object):
         shaft_area = [roi.area*(vw**2) for roi in rs]
         fls_properties['shaft_area'] = np.array(shaft_area)
 
-        shaft_coordinates = [[roi.centroid[0]*vw, roi.centroid[1]*vw, i*vd]
-                             for i, roi in enumerate(rs)]
+        shaft_coordinates = [[roi.centroid[0]*vw, roi.centroid[1]*vw, z*vd]
+                             for z, roi in zrs]
         fls_properties['shaft_coordinates'] = np.array(shaft_coordinates)
 
         if do_shaft_outline:
             shaft_outline = []
-            for i, roi in enumerate(rs):
+            for i, roi in zrs:
                 base_indices = roi.coords
                 shaft_coordinates.append(list(self._voxel_width*np.array(roi.centroid)) + [i*self._voxel_depth])
                 try:
@@ -187,7 +236,7 @@ class Stack(object):
             shaft_mean_background_intensity = []
             shaft_std_background_intensity = []
         
-            for i, roi in enumerate(rs):
+            for i, roi in zrs:
                 base_indices = roi.coords
                 foreground_mask = np.zeros_like(self._confocal[i], dtype=bool)
                 x, y = base_indices[:, 0], base_indices[:, 1]
@@ -245,6 +294,7 @@ class Frames:
                  link_cutoff_distance=2.,
                  do_intensities=False,
                  do_shaft_outline=False,
+                 alternative_z_linking=False,
                  progress=None, progress_offset=None):
         self.progress = progress
         self.progress_offset = progress_offset
@@ -252,16 +302,17 @@ class Frames:
         self.stack_tables = [
             (confocal.acquisition_time,
              Stack(confocal,
-                  base_slice,
-                  voxel_width=voxel_width,
-                  voxel_depth=voxel_depth,
-                  sigma=sigma,
-                  K=K,
-                  thresholding=thresholding,
-                  link_cutoff_distance=link_cutoff_distance,
-                  progress=progress,
-                  progress_offset=progress_offset+1 if progress_offset is not None else None).get_table(do_intensities=do_intensities,
-                                               do_shaft_outline=do_shaft_outline))
+                   base_slice,
+                   voxel_width=voxel_width,
+                   voxel_depth=voxel_depth,
+                   sigma=sigma,
+                   K=K,
+                   thresholding=thresholding,
+                   link_cutoff_distance=link_cutoff_distance,
+                   alternative_linking=alternative_z_linking,
+                   progress=progress,
+                   progress_offset=progress_offset+1 if progress_offset is not None else None).get_table(do_intensities=do_intensities,
+                                                                                                         do_shaft_outline=do_shaft_outline))
             for confocal in progress(confocals, desc='Segmenting', position=progress_offset)]
         self.frame_times = [time for time, _ in self.stack_tables]
         
