@@ -295,12 +295,15 @@ class Frames:
                  K=3,
                  thresholding=threshold_triangle,
                  link_cutoff_distance=2.,
+                 memory=4,
                  do_intensities=False,
                  do_shaft_outline=False,
                  alternative_z_linking=False,
+                 alternative_time_linking=False,
                  progress=None, progress_offset=None):
         self.progress = progress
         self.progress_offset = progress_offset
+        self.memory = 4
         
         self.stack_tables = [
             (confocal.acquisition_time,
@@ -319,12 +322,54 @@ class Frames:
             for confocal in progress(confocals, desc='Segmenting', position=progress_offset)]
         self.frame_times = [time for time, _ in self.stack_tables]
         
-        self._link_frames()
+        if alternative_time_linking:
+            self._alt_link_frames()
+        else:
+            self._link_frames()
+
+    def _alt_link_frames(self):
+        # Initial FLS collection is everything in the first frame
+        flss = [analysis.FLS(0, row) for i, row in self.stack_tables[0][1].iterrows()]
+        # Iterate over tables from time points, starting at the second one
+        for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink',
+                               position=self.progress_offset):
+            cands = self.stack_tables[i][1]
+            nr_cand = cands.shape[0]
+            if nr_cand == 0:
+                continue
+
+            rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-self.memory]
+            nr_fls = len(rel_flss)
+            if nr_fls == 0:
+                for _, row in cands.iterrows():
+                    flss.append(analysis.FLS(i, row))
+                continue
+
+            # Calculate cost matrix
+            X = np.array([np.mean(fls.base_position, axis=0) for fls in rel_flss])
+            Y = np.array([row.shaft_coordinates[0] for _, row in cands.iterrows()])
+            C = pairwise_distances(X, Y)
+            xm, ym = np.unravel_index(np.argsort(C, axis=None), C.shape)
+            candidates = C[xm, ym] < 1.
+            xm = xm[candidates]
+            ym = ym[candidates]
+
+            looked_at_x = []
+            looked_at_y = []
+            for xi, yi in zip(xm, ym):
+                if xi not in looked_at_x and yi not in looked_at_y:
+                    looked_at_x.append(xi)
+                    looked_at_y.append(yi)
+                    rel_flss[xi].add_row(i, cands.iloc[yi])
+            for yi in range(nr_cand):
+                if yi not in looked_at_y:
+                    flss.append(analysis.FLS(i, cands.iloc[yi]))
+        self.flss = flss
         
     def _link_frames(self):
         def cost_matrix(flss, cands, frame, cost_thresh=1e3):
             # Relevant FLS are from the last 4 frames
-            rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-4]
+            rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-self.memory]
             if len(rel_flss) == 0:
                 return [], cost_thresh+np.random.rand(cands.shape[0], cands.shape[0])*cost_thresh
             
