@@ -13,7 +13,7 @@ setup(name='pyflsace',
           'numpy',
           'scipy',
           'pandas',
-          'scikit-image',
+          'scikit-image>=0.13.0',
           'scikit-learn',
           'lapjv',
       ])
