@@ -8,6 +8,7 @@ setup(name='pyflsace',
       author_email='ulrich.dobramysl@gmail.com',
       packages=['flsace'],
       zip_safe=False,
+      test_suite='tests',
       install_requires=[
           'numpy',
           'scipy',

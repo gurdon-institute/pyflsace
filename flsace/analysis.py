@@ -104,7 +104,7 @@ class Stack(object):
                 for r in self._slice_rois[z]]
         matched = True
         p = self._progress(desc="Linking slices", position=self._progress_offset)
-        while matched:
+        while matched and (len(pool) > 0) and (len(fls) > 0):
             X = np.array([f[-1][2] for f in fls])
             Y = np.array([p[2] for p in pool])
             P = pairwise_distances(X*conv, Y*conv)
@@ -189,6 +189,8 @@ class Stack(object):
         shaft_coordinates = [[roi.centroid[0]*vw, roi.centroid[1]*vw, z*vd]
                              for z, roi in zrs]
         fls_properties['shaft_coordinates'] = np.array(shaft_coordinates)
+        fls_properties['X'] = shaft_coordinates[0][0]
+        fls_properties['Y'] = shaft_coordinates[0][1]
 
         if do_shaft_outline:
             shaft_outline = []
@@ -235,33 +237,33 @@ class Stack(object):
                     fls_properties[tirf_name+"_mean_background_intensity"] = float("NaN")
                     fls_properties[tirf_name+"_std_background_intensity"] = float("NaN")
             
-            shaft_mean_intensity = []
-            shaft_mean_background_intensity = []
-            shaft_std_background_intensity = []
+            # shaft_mean_intensity = []
+            # shaft_mean_background_intensity = []
+            # shaft_std_background_intensity = []
         
-            for i, roi in zrs:
-                base_indices = roi.coords
-                foreground_mask = np.zeros_like(self._confocal[i], dtype=bool)
-                x, y = base_indices[:, 0], base_indices[:, 1]
-                foreground_mask[x, y] = True
+            # for i, roi in zrs:
+            #     base_indices = roi.coords
+            #     foreground_mask = np.zeros_like(self._confocal[i], dtype=bool)
+            #     x, y = base_indices[:, 0], base_indices[:, 1]
+            #     foreground_mask[x, y] = True
 
-                bounding_box = foreground_mask[x.min():x.max()+1, y.min():y.max()+1]
-                dil1 = binary_dilation(foreground_mask, bounding_box)
-                dil2 = binary_dilation(dil1, bounding_box)
-                background_mask = dil2 & (~dil1) & (~self._roi_masks[i])
-                nr_bg_pxls = background_mask.sum()
+            #     bounding_box = foreground_mask[x.min():x.max()+1, y.min():y.max()+1]
+            #     dil1 = binary_dilation(foreground_mask, bounding_box)
+            #     dil2 = binary_dilation(dil1, bounding_box)
+            #     background_mask = dil2 & (~dil1) & (~self._roi_masks[i])
+            #     nr_bg_pxls = background_mask.sum()
 
-                shaft_mean_intensity.append(self._confocal[i][foreground_mask].mean())
-                if nr_bg_pxls > 10:
-                    shaft_mean_background_intensity.append(self._confocal[i][background_mask].mean())
-                    shaft_std_background_intensity.append(self._confocal[i][background_mask].std())
-                else:
-                    shaft_mean_background_intensity.append(float("NaN"))
-                    shaft_std_background_intensity.append(float("NaN"))
+            #     shaft_mean_intensity.append(self._confocal[i][foreground_mask].mean())
+            #     if nr_bg_pxls > 10:
+            #         shaft_mean_background_intensity.append(self._confocal[i][background_mask].mean())
+            #         shaft_std_background_intensity.append(self._confocal[i][background_mask].std())
+            #     else:
+            #         shaft_mean_background_intensity.append(float("NaN"))
+            #         shaft_std_background_intensity.append(float("NaN"))
                 
-            fls_properties['shaft_mean_intensity'] = np.array(shaft_mean_intensity)
-            fls_properties['shaft_mean_background_intensity'] = np.array(shaft_mean_background_intensity)
-            fls_properties['shaft_std_background_intensity'] = np.array(shaft_std_background_intensity)
+            # fls_properties['shaft_mean_intensity'] = np.array(shaft_mean_intensity)
+            # fls_properties['shaft_mean_background_intensity'] = np.array(shaft_mean_background_intensity)
+            # fls_properties['shaft_std_background_intensity'] = np.array(shaft_std_background_intensity)
         
         return fls_properties
     
@@ -271,24 +273,25 @@ class Stack(object):
                                                      position=self._progress_offset)])
 
 class FLS:
+    fls_index = 0
     def __init__(self, frame, row):
+        self.rows = []
         self.frames = []
-        self.path_length = []
-        self.base_area = []
         self.base_position = []
-        self.shaft_coordinates = []
-        
         self.add_row(frame, row)
+        self.fls_index = FLS.fls_index
+        FLS.fls_index += 1
     
     def add_row(self, frame, row):
+        data = row.to_dict()
+        data['frame'] = frame
+        data['fls_index'] = self.fls_index
+        self.rows.append(data)
         self.frames.append(frame)
-        self.path_length.append(row.path_length)
-        self.base_area.append(row.base_area)
-        self.base_position.append(np.array(row.shaft_coordinates[0]))
-        self.shaft_coordinates.append(np.array(row.shaft_coordinates))
+        self.base_position.append(np.array([row.X, row.Y]))
 
 class Frames:
-    def __init__(self, confocals, base_slice,
+    def __init__(self, images, base_slice,
                  voxel_width=0.1487,
                  voxel_depth=1.,
                  sigma=1.5,
@@ -304,22 +307,26 @@ class Frames:
         self.progress = progress
         self.progress_offset = progress_offset
         self.memory = 4
-        
-        self.stack_tables = [
-            (confocal.acquisition_time,
-             Stack(confocal,
-                   base_slice,
-                   voxel_width=voxel_width,
-                   voxel_depth=voxel_depth,
-                   sigma=sigma,
-                   K=K,
-                   thresholding=thresholding,
-                   link_cutoff_distance=link_cutoff_distance,
-                   alternative_linking=alternative_z_linking,
-                   progress=progress,
-                   progress_offset=progress_offset+1 if progress_offset is not None else None).get_table(do_intensities=do_intensities,
-                                                                                                         do_shaft_outline=do_shaft_outline))
-            for confocal in progress(confocals, desc='Segmenting', position=progress_offset)]
+
+        def mapper(images):
+            confocal = images['confocal']
+            tirfs = {name: data for name, data in images.items() if name != 'confocal'}
+            time = confocal.acquisition_time
+            stack = Stack(confocal,
+                          base_slice,
+                          tirfs=tirfs,
+                          voxel_width=voxel_width,
+                          voxel_depth=voxel_depth,
+                          sigma=sigma,
+                          K=K,
+                          thresholding=thresholding,
+                          link_cutoff_distance=link_cutoff_distance,
+                          alternative_linking=alternative_z_linking,
+                          progress=progress,
+                          progress_offset=progress_offset+1 if progress_offset is not None else None)
+            return time, stack.get_table(do_intensities=do_intensities)
+        self.stack_tables = [mapper(tp_imgs) for tp_imgs in progress(images, desc='Segmenting',
+                                                                  position=progress_offset)]
         self.frame_times = [time for time, _ in self.stack_tables]
         
         if alternative_time_linking:
@@ -329,7 +336,7 @@ class Frames:
 
     def _alt_link_frames(self):
         # Initial FLS collection is everything in the first frame
-        flss = [analysis.FLS(0, row) for i, row in self.stack_tables[0][1].iterrows()]
+        flss = [FLS(0, row) for i, row in self.stack_tables[0][1].iterrows()]
         # Iterate over tables from time points, starting at the second one
         for i in self.progress(range(1, len(self.stack_tables)), desc='Framelink',
                                position=self.progress_offset):
@@ -338,16 +345,16 @@ class Frames:
             if nr_cand == 0:
                 continue
 
-            rel_flss = [fls for fls in flss if fls.frames[-1] >= frame-self.memory]
+            rel_flss = [fls for fls in flss if fls.frames[-1] >= i-self.memory]
             nr_fls = len(rel_flss)
             if nr_fls == 0:
                 for _, row in cands.iterrows():
-                    flss.append(analysis.FLS(i, row))
+                    flss.append(FLS(i, row))
                 continue
 
             # Calculate cost matrix
             X = np.array([np.mean(fls.base_position, axis=0) for fls in rel_flss])
-            Y = np.array([row.shaft_coordinates[0] for _, row in cands.iterrows()])
+            Y = np.array([row.shaft_coordinates[0][:2] for _, row in cands.iterrows()])
             C = pairwise_distances(X, Y)
             xm, ym = np.unravel_index(np.argsort(C, axis=None), C.shape)
             candidates = C[xm, ym] < 1.
@@ -363,7 +370,7 @@ class Frames:
                     rel_flss[xi].add_row(i, cands.iloc[yi])
             for yi in range(nr_cand):
                 if yi not in looked_at_y:
-                    flss.append(analysis.FLS(i, cands.iloc[yi]))
+                    flss.append(FLS(i, cands.iloc[yi]))
         self.flss = flss
         
     def _link_frames(self):
@@ -413,19 +420,10 @@ class Frames:
     def get_table(self):
         rows = []
         fls_id = 0
+        proteins = []
         for f in self.flss:
-            for i, frame in enumerate(f.frames):
-                rows.append((fls_id, frame, self.frame_times[frame],
-                             f.path_length[i],
-                             f.base_area[i],
-                             f.base_position[i][0],
-                             f.base_position[i][1],
-                             f.shaft_coordinates[i]))
-            fls_id += 1
-        return pd.DataFrame(data=rows,
-                            columns=["fls_index", "frame", "time",
-                                     "path_length", "base_area", "X", "Y",
-                                     "shaft_coordinates"])
+            rows.extend(f.rows)
+        return pd.DataFrame(rows)
             
 if __name__ == '__main__':
     import NDParser

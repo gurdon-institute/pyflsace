@@ -1,6 +1,9 @@
 import tifffile
 import os
-from .analysis import StackArray
+try:
+    from .analysis import StackArray
+except SystemError:
+    from analysis import StackArray
 from collections import abc
 import datetime
 
@@ -32,6 +35,11 @@ class NDFile(object):
                 value = True
             elif value == "FALSE":
                 value = False
+
+            if key == 'WavePointsCollected':
+                wave_id = value[0].strip()
+                value = [int(v.strip()) for v in value[1:]]
+                key += wave_id
             self._keyvals[key] = value
 
     @property
@@ -111,12 +119,30 @@ class NDFile(object):
         for w in range(1, self.number_of_wavelengths+1):
             for s in range(1, self.number_of_stage_positions+1):
                 for t in range(1, self.number_of_time_points+1):
+                    if 'WavePointsCollected' + str(w) in self._keyvals:
+                        if t not in self._keyvals['WavePointsCollected' + str(w)]:
+                            continue
                     imgs[self.get_image_filename(w, s, t)] = {
                         'wavelength_name': self.wavelengths[w-1],
                         'wavelength_number': w,
                         'stage_position': s,
                         'time_point': t,
                     }
+        return imgs
+
+    def get_images_for_stage_and_timepoint(self, stage_position, time_point):
+        if stage_position < 1 or stage_position > self.number_of_stage_positions:
+            raise ValueError("Invalid stage position")
+
+        if time_point < 1 or time_point > self.number_of_time_points:
+            raise ValueError("Invalid time point")
+
+        imgs = {}
+        for w in range(1, self.number_of_wavelengths+1):
+            if 'WavePointsCollected' + str(w) in self._keyvals:
+                if time_point not in self._keyvals['WavePointsCollected' + str(w)]:
+                    continue
+            imgs[(w, self.wavelengths[w-1])] = self.get_image_filename(w, stage_position, time_point)
         return imgs
 
     def get_image_data(self, wavelength, stage_position, time_point):
@@ -130,25 +156,28 @@ class NDFile(object):
 class ImageSet(abc.Sequence):
     def __init__(self, ndfilename,
                  confocal_wavelength=1,
-                 stage_position=1):
+                 stage_position=1,
+                 rename_wavelengths=lambda x: x):
         self._ndfile = NDFile(ndfilename)
         self._confocal_wavelength = confocal_wavelength
         self._stage_position = stage_position
         self.nr_timepoints = self._ndfile.number_of_time_points
+        self._renamer = rename_wavelengths
 
     def __getitem__(self, timepoint):
         if timepoint < 0 or timepoint >= self._ndfile.number_of_time_points:
             raise IndexError
-        with tifffile.TiffFile(
-                self._ndfile.get_image_filename(
-                    self._confocal_wavelength,
-                    self._stage_position,
-                    timepoint+1), 'r') as tif:
-            time = datetime.datetime.strptime(
-                tif.metaseries_metadata['PlaneInfo']['acquisition-time-local'],
-                '%Y%m%d %H:%M:%S.%f')
-            confocal = StackArray(tif.asarray(), acquisition_time=time)
-        return confocal
+        imgs = self._ndfile.get_images_for_stage_and_timepoint(self._stage_position, timepoint+1)
+
+        images = {}
+        for (wnum, wname), filename in imgs.items():
+            name = self._renamer(wname)
+            with tifffile.TiffFile(filename, 'r') as tif:
+                time = datetime.datetime.strptime(
+                    tif.metaseries_metadata['PlaneInfo']['acquisition-time-local'],
+                    '%Y%m%d %H:%M:%S.%f')
+                images[name] = StackArray(tif.asarray(), acquisition_time=time)
+        return images
 
     def __len__(self):
         return self.nr_timepoints
@@ -156,5 +185,10 @@ class ImageSet(abc.Sequence):
 if __name__ == "__main__":
     import sys
     from pprint import pprint
-    nd = NDFile(sys.argv[1])
-    pprint(nd.all_images())
+
+    names = {'Confocal 470': 'confocal',
+             'TIRF561+Quad': 'VASP',
+             'TIRF640+Quad': 'Ena'}
+    
+    imgs = ImageSet((sys.argv[1]), rename_wavelengths=lambda x: names[x])
+    print(imgs[1])
