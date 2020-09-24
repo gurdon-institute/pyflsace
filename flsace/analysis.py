@@ -3,7 +3,7 @@ import pandas as pd
 
 from skimage.filters import gaussian
 from skimage.filters import threshold_triangle
-from skimage.morphology import watershed
+from skimage.segmentation import watershed
 from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 from skimage.measure import regionprops
@@ -33,7 +33,7 @@ def _pxlline(x, y):
     x = np.asarray(x)
     y = np.asarray(y)
     delta = y - x
-    t = np.linspace(0, 1, np.ceil(np.linalg.norm(x-y))+1)
+    t = np.linspace(0, 1, int(np.ceil(np.linalg.norm(x-y))+1))
     return np.unique((x + t[:, np.newaxis]*delta).astype(int), axis=0).T
 
 class Stack(object):
